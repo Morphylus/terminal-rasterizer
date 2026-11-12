@@ -45,7 +45,7 @@ typedef struct {
 void draw_at_position(const Color *color, const Position *position) {
   printf("\x1B[%i;%iH", position->x, position->y);
   printf("\x1B[38;2;%i;%i;%im", color->r, color->g, color->b);
-  printf("%s", "\u2598");
+  printf("%s", "\u2588");
 }
 
 void clean_up() {
@@ -68,9 +68,9 @@ void setup_tui() {
 int main(int argc, char *argv[]) {
   char *file = argv[1];
 
-  // terminit();
-  // setup_tui();
-  // resize(0);
+  terminit();
+  setup_tui();
+  resize(0);
 
   FILE *fp = fopen(file, "r");
   char *line = NULL;
@@ -79,23 +79,32 @@ int main(int argc, char *argv[]) {
   int image_width;
   int image_height;
   int r, g, b;
+  int spec;
 
   getline(&line, &len, fp);
   fscanf(fp, "%d %d", &image_width, &image_height);
+  fscanf(fp, "%d", &spec);
   uint32_t *image_buffer =
       malloc(image_width * image_height * sizeof(uint32_t));
 
-  printf("Start");
   for (int i = 0; i < image_width; i++) {
     for (int j = 0; j < image_height; j++) {
       fscanf(fp, "%d %d %d", &r, &g, &b);
       uint32_t rgba = r << 24 | g << 16 | b << 8;
-      image_buffer[i + j * image_width] = rgba;
+      image_buffer[j + i * image_width] = rgba;
     }
   }
 
-  // draw_at_position(&(Color){.r = 255, .g = 255, .b = 0},
-  //                  &(Position){.x = 10, .y = 50});
+  for (int i = 0; i < image_width; i++) {
+    for (int j = 0; j < image_height; j++) {
+      uint32_t rgba = image_buffer[i + j * image_width];
+      uint8_t r = rgba >> 24;
+      uint8_t g = rgba >> 16 & 0xff;
+      uint8_t b = rgba >> 8 & 0xff;
+      draw_at_position(&(Color){.r = r, .g = g, .b = b},
+                       &(Position){.x = j, .y = i});
+    }
+  }
   char buf;
 
   for (;;) {
