@@ -42,10 +42,12 @@ typedef struct {
   int y;
 } Position;
 
-void draw_at_position(const Color *color, const Position *position) {
-  printf("\x1B[%i;%iH", position->x, position->y);
-  printf("\x1B[38;2;%i;%i;%im", color->r, color->g, color->b);
-  printf("%s", "\u2588");
+void draw_at_position(const Color *upper_color, const Color *lower_color,
+                      const Position *position) {
+  printf("\x1B[%i;%iH", position->y, position->x);
+  printf("\x1B[48;2;%i;%i;%im", lower_color->r, lower_color->g, lower_color->b);
+  printf("\x1B[38;2;%i;%i;%im", upper_color->r, upper_color->g, upper_color->b);
+  printf("%s", "\u2580");
 }
 
 void clean_up() {
@@ -95,14 +97,22 @@ int main(int argc, char *argv[]) {
     }
   }
 
-  for (int i = 0; i < image_width; i++) {
+  // Image is now stored in row major order
+
+  for (int i = 0; i < image_width - 1; i += 2) {
     for (int j = 0; j < image_height; j++) {
-      uint32_t rgba = image_buffer[i + j * image_width];
-      uint8_t r = rgba >> 24;
-      uint8_t g = rgba >> 16 & 0xff;
-      uint8_t b = rgba >> 8 & 0xff;
-      draw_at_position(&(Color){.r = r, .g = g, .b = b},
-                       &(Position){.x = j, .y = i});
+      uint32_t rgba_u = image_buffer[j + i * image_width];
+      uint32_t rgba_l = image_buffer[j + (i + 1) * image_width];
+      uint8_t r_u = rgba_u >> 24;
+      uint8_t g_u = rgba_u >> 16 & 0xff;
+      uint8_t b_u = rgba_u >> 8 & 0xff;
+      uint8_t r_l = rgba_l >> 24;
+      uint8_t g_l = rgba_l >> 16 & 0xff;
+      uint8_t b_l = rgba_l >> 8 & 0xff;
+
+      draw_at_position(&(Color){.r = r_u, .g = g_u, .b = b_u},
+                       &(Color){.r = r_l, .g = g_l, .b = b_l},
+                       &(Position){.x = j, .y = i / 2});
     }
   }
   char buf;
