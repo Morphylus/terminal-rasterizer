@@ -117,6 +117,11 @@ int main(int argc, char *argv[]) {
   }
   char buf;
 
+  printf("\x1B[0m");
+  printf("\x1B[%d;0f", height);
+  printf("Image size: %dx%d \t Window size: %dx%d", image_width, image_height,
+         width, height * 2);
+
   for (;;) {
     scanf("%c", &buf);
     if (buf == 'q') {
