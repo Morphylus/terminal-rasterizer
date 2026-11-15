@@ -1,6 +1,7 @@
 #include <_time.h>
 #include <_types.h>
 #include <signal.h>
+#include <stddef.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -21,14 +22,14 @@ void terminit() {
   tcsetattr(1, TCSANOW, &t);
 }
 
-uint16_t width;
-uint16_t height;
+uint16_t window_width;
+uint16_t window_height;
 
 void resize(int i) {
   struct winsize ws;
   ioctl(1, TIOCGWINSZ, &ws);
-  width = ws.ws_col;
-  height = ws.ws_row;
+  window_width = ws.ws_col;
+  window_height = ws.ws_row;
 }
 
 typedef struct {
@@ -41,6 +42,12 @@ typedef struct {
   int x;
   int y;
 } Position;
+
+typedef struct {
+  u_int32_t *img_buffer;
+  size_t width;
+  size_t height;
+} PPMImage;
 
 void draw_at_position(const Color *upper_color, const Color *lower_color,
                       const Position *position) {
@@ -67,14 +74,7 @@ void setup_tui() {
   atexit(clean_up);
 }
 
-int main(int argc, char *argv[]) {
-  char *file = argv[1];
-
-  terminit();
-  setup_tui();
-  resize(0);
-
-  FILE *fp = fopen(file, "r");
+PPMImage read_ppm(FILE *fp) {
   char *line = NULL;
   size_t len = 0;
   ssize_t read;
@@ -87,7 +87,7 @@ int main(int argc, char *argv[]) {
   fscanf(fp, "%d %d", &image_width, &image_height);
   fscanf(fp, "%d", &spec);
   uint32_t *image_buffer =
-      malloc(image_width * image_height * sizeof(uint32_t));
+      (uint32_t *)malloc(image_width * image_height * sizeof(uint32_t));
 
   for (int i = 0; i < image_width; i++) {
     for (int j = 0; j < image_height; j++) {
@@ -97,12 +97,15 @@ int main(int argc, char *argv[]) {
     }
   }
 
-  // Image is now stored in row major order
+  return (PPMImage){
+      .img_buffer = image_buffer, .height = image_height, .width = image_width};
+}
 
-  for (int i = 0; i < image_width - 1; i += 2) {
-    for (int j = 0; j < image_height; j++) {
-      uint32_t rgba_u = image_buffer[j + i * image_width];
-      uint32_t rgba_l = image_buffer[j + (i + 1) * image_width];
+void draw_frame(const uint32_t *image_buffer, size_t width, size_t height) {
+  for (size_t i = 0; i < width - 1; i += 2) {
+    for (size_t j = 0; j < height; j++) {
+      uint32_t rgba_u = image_buffer[j + i * width];
+      uint32_t rgba_l = image_buffer[j + (i + 1) * width];
       uint8_t r_u = rgba_u >> 24;
       uint8_t g_u = rgba_u >> 16 & 0xff;
       uint8_t b_u = rgba_u >> 8 & 0xff;
@@ -115,12 +118,25 @@ int main(int argc, char *argv[]) {
                        &(Position){.x = j, .y = i / 2});
     }
   }
+}
+
+int main(int argc, char *argv[]) {
+  char *path = argv[1];
+
+  terminit();
+  setup_tui();
+  resize(0);
+
+  FILE *fp = fopen(path, "r");
+  PPMImage img = read_ppm(fp);
+  draw_frame((uint32_t *)img.img_buffer, img.width, img.height);
+
   char buf;
 
   printf("\x1B[0m");
-  printf("\x1B[%d;0f", height);
-  printf("Image size: %dx%d \t Window size: %dx%d", image_width, image_height,
-         width, height * 2);
+  printf("\x1B[%d;0f", window_height);
+  printf("Image size: %zux%zu Window size: %dx%d", img.width, img.height,
+         window_width, window_height * 2);
 
   for (;;) {
     scanf("%c", &buf);
@@ -130,7 +146,7 @@ int main(int argc, char *argv[]) {
   }
 
   fclose(fp);
-  free(image_buffer);
+  free(img.img_buffer);
 
   return 0;
 }
