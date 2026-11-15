@@ -65,6 +65,45 @@ void setup_tui() {
   atexit(clean_up);
 }
 
+void draw_line(const Vec2i *raster_coords, uint32_t *image_buffer, Vec2i p0,
+               Vec2i p1, size_t width) {
+  int x0 = p0.x;
+  int x1 = p1.x;
+  int y0 = p0.y;
+  int y1 = p1.y;
+  int dx = abs(x1 - x0), sx = x0 < x1 ? 1 : -1;
+  int dy = -abs(y1 - y0), sy = y0 < y1 ? 1 : -1;
+  int err = dx + dy, e2;
+
+  while (1) {
+    image_buffer[x0 + y0 * width] = 0x00ff0000;
+    if (x0 == x1 && y0 == y1)
+      break;
+    e2 = 2 * err;
+    if (e2 > dy) {
+      err += dy;
+      x0 += sx;
+    }
+    if (e2 < dx) {
+      err += dx;
+      y0 += sy;
+    }
+  }
+};
+
+void draw_wire(const OBJ *obj, const Vec2i *raster_coords,
+               uint32_t *image_buffer, size_t width, size_t height) {
+  for (int i = 0; i < obj->n_faces; i++) {
+    Vec3i face = obj->face_indices[i];
+    draw_line(raster_coords, image_buffer, raster_coords[face.x],
+              raster_coords[face.y], width);
+    draw_line(raster_coords, image_buffer, raster_coords[face.y],
+              raster_coords[face.z], width);
+    draw_line(raster_coords, image_buffer, raster_coords[face.x],
+              raster_coords[face.z], width);
+  }
+}
+
 void draw_frame(const uint32_t *image_buffer, size_t width, size_t height) {
   for (size_t i = 0; i < height - 1; i += 2) {
     for (size_t j = 0; j < width; j++) {
@@ -92,14 +131,14 @@ int main(int argc, char *argv[]) {
   Vec3f *vertices = (Vec3f *)malloc(8 * sizeof(Vec3f));
   Vec3i *face_indices = (Vec3i *)malloc(12 * sizeof(Vec3i));
 
-  vertices[0] = (Vec3f){.x = -0.1, .y = -0.1, .z = 10.0}; // LLF
-  vertices[1] = (Vec3f){.x = 0.1, .y = -0.1, .z = 10.0};  // LRF
-  vertices[2] = (Vec3f){.x = -0.1, .y = 0.1, .z = 10.0};  // ULF
-  vertices[3] = (Vec3f){.x = 0.1, .y = 0.1, .z = 10.0};   // URF
-  vertices[4] = (Vec3f){.x = -0.1, .y = -0.1, .z = 20.0}; // LLB
-  vertices[5] = (Vec3f){.x = 0.1, .y = -0.1, .z = 20.0};  // LRB
-  vertices[6] = (Vec3f){.x = -0.1, .y = 0.1, .z = 20.0};  // ULB
-  vertices[7] = (Vec3f){.x = 0.1, .y = 0.1, .z = 20.0};   // URB
+  vertices[0] = (Vec3f){.x = -0.1, .y = -0.1, .z = 15.0}; // LLF
+  vertices[1] = (Vec3f){.x = 0.1, .y = -0.1, .z = 15.0};  // LRF
+  vertices[2] = (Vec3f){.x = -0.1, .y = 0.1, .z = 15.0};  // ULF
+  vertices[3] = (Vec3f){.x = 0.1, .y = 0.1, .z = 15.0};   // URF
+  vertices[4] = (Vec3f){.x = -0.1, .y = -0.1, .z = 25.0}; // LLB
+  vertices[5] = (Vec3f){.x = 0.1, .y = -0.1, .z = 25.0};  // LRB
+  vertices[6] = (Vec3f){.x = -0.1, .y = 0.1, .z = 25.0};  // ULB
+  vertices[7] = (Vec3f){.x = 0.1, .y = 0.1, .z = 25.0};   // URB
 
   face_indices[0] = (Vec3i){.x = 0, .y = 1, .z = 2};
   face_indices[1] = (Vec3i){.x = 2, .y = 1, .z = 3};
@@ -163,6 +202,7 @@ int main(int argc, char *argv[]) {
     frame_buffer[index] = 0x00ff0000;
   }
 
+  draw_wire(&cube, raster_coords, frame_buffer, window_width, window_height);
   draw_frame(frame_buffer, window_width, window_height);
 
   char buf;
