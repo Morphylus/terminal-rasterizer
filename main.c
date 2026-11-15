@@ -1,3 +1,5 @@
+#include "geometry.h"
+#include "vec.h"
 #include <_time.h>
 #include <_types.h>
 #include <signal.h>
@@ -121,23 +123,82 @@ void draw_frame(const uint32_t *image_buffer, size_t width, size_t height) {
 }
 
 int main(int argc, char *argv[]) {
-  char *path = argv[1];
-
   terminit();
   setup_tui();
   resize(0);
 
-  FILE *fp = fopen(path, "r");
-  PPMImage img = read_ppm(fp);
-  draw_frame((uint32_t *)img.img_buffer, img.width, img.height);
+  Vec3f *vertices = (Vec3f *)malloc(8 * sizeof(Vec3f));
+  Vec3i *face_indices = (Vec3i *)malloc(12 * sizeof(Vec3i));
+
+  vertices[0] = (Vec3f){.x = -0.1, .y = -0.1, .z = 10.0}; // LLF
+  vertices[1] = (Vec3f){.x = 0.1, .y = -0.1, .z = 10.0};  // LRF
+  vertices[2] = (Vec3f){.x = -0.1, .y = 0.1, .z = 10.0};  // ULF
+  vertices[3] = (Vec3f){.x = 0.1, .y = 0.1, .z = 10.0};   // URF
+  vertices[4] = (Vec3f){.x = -0.1, .y = -0.1, .z = 20.0}; // LLB
+  vertices[5] = (Vec3f){.x = 0.1, .y = -0.1, .z = 20.0};  // LRB
+  vertices[6] = (Vec3f){.x = -0.1, .y = 0.1, .z = 20.0};  // ULB
+  vertices[7] = (Vec3f){.x = 0.1, .y = 0.1, .z = 20.0};   // URB
+
+  face_indices[0] = (Vec3i){.x = 0, .y = 1, .z = 2};
+  face_indices[1] = (Vec3i){.x = 2, .y = 1, .z = 3};
+  face_indices[2] = (Vec3i){.x = 4, .y = 6, .z = 5};
+  face_indices[3] = (Vec3i){.x = 6, .y = 7, .z = 5};
+  face_indices[4] = (Vec3i){.x = 0, .y = 2, .z = 4};
+  face_indices[5] = (Vec3i){.x = 2, .y = 6, .z = 4};
+  face_indices[6] = (Vec3i){.x = 1, .y = 5, .z = 3};
+  face_indices[7] = (Vec3i){.x = 3, .y = 5, .z = 7};
+  face_indices[8] = (Vec3i){.x = 0, .y = 4, .z = 1};
+  face_indices[9] = (Vec3i){.x = 1, .y = 4, .z = 5};
+  face_indices[10] = (Vec3i){.x = 2, .y = 3, .z = 6};
+  face_indices[11] = (Vec3i){.x = 3, .y = 7, .z = 6};
+
+  OBJ cube = {.vertices = vertices,
+              .face_indices = face_indices,
+              .n_vertices = 8,
+              .n_faces = 12};
+
+  Vec3f *screen_coords = (Vec3f *)malloc(cube.n_vertices * sizeof(Vec3f));
+  Vec3f *ndc_coords = (Vec3f *)malloc(cube.n_vertices * sizeof(Vec3f));
+  Vec2i *raster_coords = (Vec2i *)malloc(cube.n_vertices * sizeof(Vec2i));
+
+  // All metric
+  float film_aperture_height = 1.0;
+  float film_aperture_width = 1.0;
+  float focal_length = 35.0;
+  float near_clip_plane = 0.1;
+
+  float canvas_top =
+      ((film_aperture_height / 2) / focal_length) * near_clip_plane;
+  float canvas_bottom = -canvas_top;
+  float canvas_right =
+      canvas_top * (film_aperture_width / film_aperture_height);
+  float canvas_left = -canvas_right;
+
+  for (size_t i = 0; i < cube.n_vertices; i++) {
+    screen_coords[i] =
+        (Vec3f){.x = near_clip_plane * cube.vertices[i].x / -cube.vertices[i].z,
+                .y = near_clip_plane * cube.vertices[i].y / -cube.vertices[i].z,
+                .z = -cube.vertices[i].z};
+
+    ndc_coords[i] = (Vec3f){
+        .x = 2 * screen_coords[i].x / (canvas_right - canvas_left) -
+             (canvas_right + canvas_left) / (canvas_right - canvas_left),
+        .y = 2 * screen_coords[i].y / (canvas_top - canvas_bottom) -
+             (canvas_top + canvas_bottom) / (canvas_top - canvas_bottom),
+        .z = screen_coords[i].z};
+
+    raster_coords[i] =
+        (Vec2i){.x = (int)(((1.0 + ndc_coords[i].x) / 2.0) * window_width),
+                .y = (int)(((1.0 + ndc_coords[i].y) / 2.0) * window_height)};
+  }
+
+  for (int i = 0; i < 8; i++) {
+    draw_at_position(
+        &(Color){.r = 0, .g = 255, .b = 0}, &(Color){.r = 0, .g = 0, .b = 0},
+        &(Position){.x = raster_coords[i].x, .y = raster_coords[i].y});
+  }
 
   char buf;
-
-  printf("\x1B[0m");
-  printf("\x1B[%d;0f", window_height);
-  printf("Image size: %zux%zu Window size: %dx%d", img.width, img.height,
-         window_width, window_height * 2);
-
   for (;;) {
     scanf("%c", &buf);
     if (buf == 'q') {
@@ -145,8 +206,8 @@ int main(int argc, char *argv[]) {
     }
   }
 
-  fclose(fp);
-  free(img.img_buffer);
+  free(vertices);
+  free(face_indices);
 
   return 0;
 }
