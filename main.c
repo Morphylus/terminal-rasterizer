@@ -31,7 +31,7 @@ void resize(int i) {
   struct winsize ws;
   ioctl(1, TIOCGWINSZ, &ws);
   window_width = ws.ws_col;
-  window_height = ws.ws_row;
+  window_height = ws.ws_row * 2;
 }
 
 typedef struct {
@@ -40,19 +40,8 @@ typedef struct {
   u_int8_t b;
 } Color;
 
-typedef struct {
-  int x;
-  int y;
-} Position;
-
-typedef struct {
-  u_int32_t *img_buffer;
-  size_t width;
-  size_t height;
-} PPMImage;
-
 void draw_at_position(const Color *upper_color, const Color *lower_color,
-                      const Position *position) {
+                      const Vec2i *position) {
   printf("\x1B[%i;%iH", position->y, position->x);
   printf("\x1B[48;2;%i;%i;%im", lower_color->r, lower_color->g, lower_color->b);
   printf("\x1B[38;2;%i;%i;%im", upper_color->r, upper_color->g, upper_color->b);
@@ -76,36 +65,9 @@ void setup_tui() {
   atexit(clean_up);
 }
 
-PPMImage read_ppm(FILE *fp) {
-  char *line = NULL;
-  size_t len = 0;
-  ssize_t read;
-  int image_width;
-  int image_height;
-  int r, g, b;
-  int spec;
-
-  getline(&line, &len, fp);
-  fscanf(fp, "%d %d", &image_width, &image_height);
-  fscanf(fp, "%d", &spec);
-  uint32_t *image_buffer =
-      (uint32_t *)malloc(image_width * image_height * sizeof(uint32_t));
-
-  for (int i = 0; i < image_width; i++) {
-    for (int j = 0; j < image_height; j++) {
-      fscanf(fp, "%d %d %d", &r, &g, &b);
-      uint32_t rgba = r << 24 | g << 16 | b << 8;
-      image_buffer[j + i * image_width] = rgba;
-    }
-  }
-
-  return (PPMImage){
-      .img_buffer = image_buffer, .height = image_height, .width = image_width};
-}
-
 void draw_frame(const uint32_t *image_buffer, size_t width, size_t height) {
-  for (size_t i = 0; i < width - 1; i += 2) {
-    for (size_t j = 0; j < height; j++) {
+  for (size_t i = 0; i < height - 1; i += 2) {
+    for (size_t j = 0; j < width; j++) {
       uint32_t rgba_u = image_buffer[j + i * width];
       uint32_t rgba_l = image_buffer[j + (i + 1) * width];
       uint8_t r_u = rgba_u >> 24;
@@ -117,7 +79,7 @@ void draw_frame(const uint32_t *image_buffer, size_t width, size_t height) {
 
       draw_at_position(&(Color){.r = r_u, .g = g_u, .b = b_u},
                        &(Color){.r = r_l, .g = g_l, .b = b_l},
-                       &(Position){.x = j, .y = i / 2});
+                       &(Vec2i){.x = j, .y = i / 2});
     }
   }
 }
@@ -192,11 +154,16 @@ int main(int argc, char *argv[]) {
                 .y = (int)(((1.0 + ndc_coords[i].y) / 2.0) * window_height)};
   }
 
+  uint32_t *frame_buffer =
+      (uint32_t *)calloc(window_width * window_height, sizeof(uint32_t));
+
   for (int i = 0; i < 8; i++) {
-    draw_at_position(
-        &(Color){.r = 0, .g = 255, .b = 0}, &(Color){.r = 0, .g = 0, .b = 0},
-        &(Position){.x = raster_coords[i].x, .y = raster_coords[i].y});
+    size_t index =
+        (size_t)(raster_coords[i].x + raster_coords[i].y * window_width);
+    frame_buffer[index] = 0x00ff0000;
   }
+
+  draw_frame(frame_buffer, window_width, window_height);
 
   char buf;
   for (;;) {
@@ -208,6 +175,10 @@ int main(int argc, char *argv[]) {
 
   free(vertices);
   free(face_indices);
+  free(screen_coords);
+  free(ndc_coords);
+  free(raster_coords);
+  free(frame_buffer);
 
   return 0;
 }
