@@ -1,7 +1,7 @@
 #pragma once
+
 #include "vec.h"
 #include <stddef.h>
-#include <stdlib.h>
 
 typedef struct {
   Vec3i *face_indices;
