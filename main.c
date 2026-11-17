@@ -45,6 +45,10 @@ void resize(int i) {
   window = (Window){.width = ws.ws_col, .height = ws.ws_row * 2};
 }
 
+static inline size_t flat_index(const Window win, Vec2i coords) {
+  return coords.x + coords.y * win.width;
+}
+
 void draw_at_position(const Color *upper_color, const Color *lower_color,
                       const Vec2i *position) {
   printf("\x1B[%i;%iH", position->y, position->x);
@@ -142,6 +146,30 @@ typedef struct CameraConfig {
   size_t window_width, window_height;
 } CameraConfig;
 
+typedef struct Canvas {
+  float top;
+  float bottom;
+  float left;
+  float right;
+} Canvas;
+
+Vec2i get_pixel_coords(const Vec3f *vertex, const CameraConfig cfg,
+                       const Canvas canvas, const Window win) {
+  Vec3f screen_coords = {.x = cfg.near_clip_plane * vertex->x / -vertex->z,
+                         .y = cfg.near_clip_plane * vertex->y / -vertex->z,
+                         .z = -vertex->z};
+
+  Vec3f ndc_coords = {
+      .x = 2 * screen_coords.x / (canvas.right - canvas.left) -
+           (canvas.right + canvas.left) / (canvas.right - canvas.left),
+      .y = 2 * screen_coords.y / (canvas.top - canvas.bottom) -
+           (canvas.top + canvas.bottom) / (canvas.top - canvas.bottom),
+      .z = screen_coords.z};
+
+  return (Vec2i){.x = (int)(((1.0 + ndc_coords.x) / 2.0) * win.width),
+                 .y = (int)(((1.0 + ndc_coords.y) / 2.0) * win.height)};
+}
+
 void calculate_raster_coords(Vec2i *raster_coords, const CameraConfig cfg,
                              Vec3f *screen_coords, Vec3f *ndc_coords,
                              const Vec3f *vertices, const size_t n_vertices,
@@ -197,17 +225,24 @@ int main(int argc, char *argv[]) {
                                 .window_width = window.width,
                                 .window_height = window.height};
 
-  Vec3f *screen_coords = (Vec3f *)malloc(obj->n_vertices * sizeof(Vec3f));
-  Vec3f *ndc_coords = (Vec3f *)malloc(obj->n_vertices * sizeof(Vec3f));
+  float canvas_top =
+      ((camera_config.film_aperture_height / 2) / camera_config.focal_length) *
+      camera_config.near_clip_plane;
+  float canvas_right = canvas_top * (camera_config.film_aperture_width /
+                                     camera_config.film_aperture_height);
+  Canvas canvas = {.top = canvas_top,
+                   .bottom = -canvas_top,
+                   .right = canvas_right,
+                   .left = -canvas_right};
+
   Vec2i *raster_coords = (Vec2i *)malloc(obj->n_vertices * sizeof(Vec2i));
   uint32_t *frame_buffer =
       (uint32_t *)calloc(window.width * window.height, sizeof(uint32_t));
 
-  // Change to: For each vertex of obj -> calculate_pixel_coords()
-
-  calculate_raster_coords(raster_coords, camera_config, screen_coords,
-                          ndc_coords, obj->vertices, obj->n_vertices,
-                          obj->face_indices, obj->n_faces);
+  for (int i = 0; i < obj->n_vertices; i++) {
+    raster_coords[i] =
+        get_pixel_coords(&obj->vertices[i], camera_config, canvas, window);
+  }
 
   draw_wire(obj, raster_coords, frame_buffer, window);
   draw_frame(frame_buffer, window);
@@ -221,9 +256,6 @@ int main(int argc, char *argv[]) {
   }
 
   OBJ_Deinit(obj);
-
-  free(screen_coords);
-  free(ndc_coords);
   free(raster_coords);
   free(frame_buffer);
 
