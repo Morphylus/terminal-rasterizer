@@ -190,9 +190,6 @@ int main(int argc, char *argv[]) {
   setup_tui();
   resize(0);
 
-  Vec3f *vertices = (Vec3f *)malloc(8 * sizeof(Vec3f));
-  Vec3i *face_indices = (Vec3i *)malloc(12 * sizeof(Vec3i));
-
   CameraConfig camera_config = {.film_aperture_height = 1.0,
                                 .film_aperture_width = 1.0,
                                 .focal_length = 35.0,
@@ -205,6 +202,8 @@ int main(int argc, char *argv[]) {
   Vec2i *raster_coords = (Vec2i *)malloc(obj->n_vertices * sizeof(Vec2i));
   uint32_t *frame_buffer =
       (uint32_t *)calloc(window.width * window.height, sizeof(uint32_t));
+
+  // Change to: For each vertex of obj -> calculate_pixel_coords()
 
   calculate_raster_coords(raster_coords, camera_config, screen_coords,
                           ndc_coords, obj->vertices, obj->n_vertices,
