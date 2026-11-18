@@ -21,6 +21,7 @@ Renderer *Renderer_Init(const Camera *camera, const Window *window) {
   canvas->left = -canvas_right;
 
   renderer->camera = camera;
+  renderer->frame_buffer = frame_buffer;
   renderer->canvas = canvas;
   renderer->window = window;
 
@@ -36,25 +37,23 @@ void Renderer_Deinit(Renderer *renderer) {
 }
 
 Vec2i get_pixel_coords(const Vec3f *vertex, const Renderer *renderer) {
+  const Canvas *canvas = renderer->canvas;
+  const Window *window = renderer->window;
+
   Vec3f screen_coords = {
       .x = renderer->camera->near_clip_plane * vertex->x / -vertex->z,
       .y = renderer->camera->near_clip_plane * vertex->y / -vertex->z,
       .z = -vertex->z};
 
   Vec3f ndc_coords = {
-      .x = 2 * screen_coords.x /
-               (renderer->canvas->right - renderer->canvas->left) -
-           (renderer->canvas->right + renderer->canvas->left) /
-               (renderer->canvas->right - renderer->canvas->left),
-      .y = 2 * screen_coords.y /
-               (renderer->canvas->top - renderer->canvas->bottom) -
-           (renderer->canvas->top + renderer->canvas->bottom) /
-               (renderer->canvas->top - renderer->canvas->bottom),
+      .x = 2 * screen_coords.x / (canvas->right - canvas->left) -
+           (canvas->right + canvas->left) / (canvas->right - canvas->left),
+      .y = 2 * screen_coords.y / (canvas->top - canvas->bottom) -
+           (canvas->top + canvas->bottom) / (canvas->top - canvas->bottom),
       .z = screen_coords.z};
 
-  return (Vec2i){
-      .x = (int)(((1.0 + ndc_coords.x) / 2.0) * renderer->window->width),
-      .y = (int)(((1.0 + ndc_coords.y) / 2.0) * renderer->window->height)};
+  return (Vec2i){.x = (int)(((1.0 + ndc_coords.x) / 2.0) * window->width),
+                 .y = (int)(((1.0 + ndc_coords.y) / 2.0) * window->height)};
 }
 
 void draw_line(const Vec2i *raster_coords, uint32_t *image_buffer, Vec2i p0,
@@ -107,7 +106,7 @@ void draw_at_position(const Color *upper_color, const Color *lower_color,
   printf("%s", "\u2580");
 }
 
-void draw_frame(Renderer *renderer) {
+void draw_frame(const Renderer *renderer) {
   for (size_t i = 0; i < renderer->window->height - 1; i += 2) {
     for (size_t j = 0; j < renderer->window->width; j++) {
       uint32_t rgba_u = renderer->frame_buffer[j + i * renderer->window->width];
@@ -135,4 +134,7 @@ void draw_obj(Renderer *renderer, OBJ *obj) {
   }
 
   draw_wire(obj, raster_coords, renderer);
+  draw_frame(renderer);
+
+  free(raster_coords);
 }
