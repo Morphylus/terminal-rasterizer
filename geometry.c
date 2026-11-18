@@ -16,15 +16,16 @@ void OBJ_Deinit(OBJ *obj) {
 }
 
 OBJ *OBJ_from_path(const char *path) {
+  Vec3f *vertices = (Vec3f *)malloc(START_CAPACITY * sizeof(Vec3f));
+  Vec3i *faces = (Vec3i *)malloc(START_CAPACITY * sizeof(Vec3i));
+  OBJ *obj = (OBJ *)malloc(sizeof(OBJ));
+
   FILE *fp = fopen(path, "r");
   char line[LINE_BUFFER_CAPACITY];
 
   float x, y, z;
   uint32_t v0, v1, v2;
   char t;
-
-  Vec3f *vertices = (Vec3f *)malloc(START_CAPACITY * sizeof(Vec3f));
-  Vec3i *faces = (Vec3i *)malloc(START_CAPACITY * sizeof(Vec3i));
 
   size_t n_vertices = 0;
   size_t n_faces = 0;
@@ -56,7 +57,6 @@ OBJ *OBJ_from_path(const char *path) {
     }
   }
 
-  OBJ *obj = (OBJ *)malloc(sizeof(OBJ));
   obj->vertices = vertices;
   obj->face_indices = faces;
   obj->n_vertices = n_vertices;

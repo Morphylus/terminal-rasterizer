@@ -1,4 +1,5 @@
 #include "geometry.h"
+#include "renderer.h"
 #include "vec.h"
 #include <_time.h>
 #include <_types.h>
@@ -26,17 +27,6 @@ void terminit() {
   tcsetattr(1, TCSANOW, &t);
 }
 
-typedef struct Window {
-  size_t width;
-  size_t height;
-} Window;
-
-typedef struct {
-  u_int8_t r;
-  u_int8_t g;
-  u_int8_t b;
-} Color;
-
 Window window;
 
 void resize(int i) {
@@ -47,14 +37,6 @@ void resize(int i) {
 
 static inline size_t flat_index(const Window win, Vec2i coords) {
   return coords.x + coords.y * win.width;
-}
-
-void draw_at_position(const Color *upper_color, const Color *lower_color,
-                      const Vec2i *position) {
-  printf("\x1B[%i;%iH", position->y, position->x);
-  printf("\x1B[48;2;%i;%i;%im", lower_color->r, lower_color->g, lower_color->b);
-  printf("\x1B[38;2;%i;%i;%im", upper_color->r, upper_color->g, upper_color->b);
-  printf("%s", "\u2580");
 }
 
 void clean_up() {
@@ -74,130 +56,8 @@ void setup_tui() {
   atexit(clean_up);
 }
 
-void draw_line(const Vec2i *raster_coords, uint32_t *image_buffer, Vec2i p0,
-               Vec2i p1, size_t width) {
-  int x0 = p0.x;
-  int x1 = p1.x;
-  int y0 = p0.y;
-  int y1 = p1.y;
-  int dx = abs(x1 - x0), sx = x0 < x1 ? 1 : -1;
-  int dy = -abs(y1 - y0), sy = y0 < y1 ? 1 : -1;
-  int err = dx + dy, e2;
-
-  while (1) {
-    image_buffer[x0 + y0 * width] = 0x00ff0000;
-    if (x0 == x1 && y0 == y1)
-      break;
-    e2 = 2 * err;
-    if (e2 > dy) {
-      err += dy;
-      x0 += sx;
-    }
-    if (e2 < dx) {
-      err += dx;
-      y0 += sy;
-    }
-  }
-}
-
-void draw_wire(const OBJ *obj, const Vec2i *raster_coords,
-               uint32_t *image_buffer, Window window) {
-  for (int i = 0; i < obj->n_faces; i++) {
-    Vec3i face = obj->face_indices[i];
-    Vec2i v0 = raster_coords[face.x];
-    Vec2i v1 = raster_coords[face.y];
-    Vec2i v2 = raster_coords[face.z];
-
-    draw_line(raster_coords, image_buffer, v0, v1, window.width);
-    draw_line(raster_coords, image_buffer, v0, v2, window.width);
-    draw_line(raster_coords, image_buffer, v1, v2, window.width);
-  }
-}
-
 void clear_frame(uint32_t *image_buffer, size_t width, size_t height) {
   memset(image_buffer, 0, width * height * sizeof(uint32_t));
-}
-
-void draw_frame(const uint32_t *image_buffer, Window window) {
-  for (size_t i = 0; i < window.height - 1; i += 2) {
-    for (size_t j = 0; j < window.width; j++) {
-      uint32_t rgba_u = image_buffer[j + i * window.width];
-      uint32_t rgba_l = image_buffer[j + (i + 1) * window.width];
-      uint8_t r_u = rgba_u >> 24;
-      uint8_t g_u = rgba_u >> 16 & 0xff;
-      uint8_t b_u = rgba_u >> 8 & 0xff;
-      uint8_t r_l = rgba_l >> 24;
-      uint8_t g_l = rgba_l >> 16 & 0xff;
-      uint8_t b_l = rgba_l >> 8 & 0xff;
-
-      draw_at_position(&(Color){.r = r_u, .g = g_u, .b = b_u},
-                       &(Color){.r = r_l, .g = g_l, .b = b_l},
-                       &(Vec2i){.x = j, .y = i / 2});
-    }
-  }
-}
-
-typedef struct CameraConfig {
-  // All metric
-  float film_aperture_height;
-  float film_aperture_width;
-  float focal_length;
-  float near_clip_plane;
-  size_t window_width, window_height;
-} CameraConfig;
-
-typedef struct Canvas {
-  float top;
-  float bottom;
-  float left;
-  float right;
-} Canvas;
-
-Vec2i get_pixel_coords(const Vec3f *vertex, const CameraConfig cfg,
-                       const Canvas canvas, const Window win) {
-  Vec3f screen_coords = {.x = cfg.near_clip_plane * vertex->x / -vertex->z,
-                         .y = cfg.near_clip_plane * vertex->y / -vertex->z,
-                         .z = -vertex->z};
-
-  Vec3f ndc_coords = {
-      .x = 2 * screen_coords.x / (canvas.right - canvas.left) -
-           (canvas.right + canvas.left) / (canvas.right - canvas.left),
-      .y = 2 * screen_coords.y / (canvas.top - canvas.bottom) -
-           (canvas.top + canvas.bottom) / (canvas.top - canvas.bottom),
-      .z = screen_coords.z};
-
-  return (Vec2i){.x = (int)(((1.0 + ndc_coords.x) / 2.0) * win.width),
-                 .y = (int)(((1.0 + ndc_coords.y) / 2.0) * win.height)};
-}
-
-void calculate_raster_coords(Vec2i *raster_coords, const CameraConfig cfg,
-                             Vec3f *screen_coords, Vec3f *ndc_coords,
-                             const Vec3f *vertices, const size_t n_vertices,
-                             const Vec3i *faces, const size_t n_faces) {
-  float canvas_top =
-      ((cfg.film_aperture_height / 2) / cfg.focal_length) * cfg.near_clip_plane;
-  float canvas_bottom = -canvas_top;
-  float canvas_right =
-      canvas_top * (cfg.film_aperture_width / cfg.film_aperture_height);
-  float canvas_left = -canvas_right;
-
-  for (size_t i = 0; i < n_vertices; i++) {
-    screen_coords[i] =
-        (Vec3f){.x = cfg.near_clip_plane * vertices[i].x / -vertices[i].z,
-                .y = cfg.near_clip_plane * vertices[i].y / -vertices[i].z,
-                .z = -vertices[i].z};
-
-    ndc_coords[i] = (Vec3f){
-        .x = 2 * screen_coords[i].x / (canvas_right - canvas_left) -
-             (canvas_right + canvas_left) / (canvas_right - canvas_left),
-        .y = 2 * screen_coords[i].y / (canvas_top - canvas_bottom) -
-             (canvas_top + canvas_bottom) / (canvas_top - canvas_bottom),
-        .z = screen_coords[i].z};
-
-    raster_coords[i] =
-        (Vec2i){.x = (int)(((1.0 + ndc_coords[i].x) / 2.0) * window.width),
-                .y = (int)(((1.0 + ndc_coords[i].y) / 2.0) * window.height)};
-  }
 }
 
 int main(int argc, char *argv[]) {
@@ -218,34 +78,15 @@ int main(int argc, char *argv[]) {
   setup_tui();
   resize(0);
 
-  CameraConfig camera_config = {.film_aperture_height = 1.0,
-                                .film_aperture_width = 1.0,
-                                .focal_length = 35.0,
-                                .near_clip_plane = 0.1,
-                                .window_width = window.width,
-                                .window_height = window.height};
+  Camera camera = {.film_aperture_height = 1.0,
+                   .film_aperture_width = 1.0,
+                   .focal_length = 35.0,
+                   .near_clip_plane = 0.1,
+                   .window_width = window.width,
+                   .window_height = window.height};
 
-  float canvas_top =
-      ((camera_config.film_aperture_height / 2) / camera_config.focal_length) *
-      camera_config.near_clip_plane;
-  float canvas_right = canvas_top * (camera_config.film_aperture_width /
-                                     camera_config.film_aperture_height);
-  Canvas canvas = {.top = canvas_top,
-                   .bottom = -canvas_top,
-                   .right = canvas_right,
-                   .left = -canvas_right};
-
-  Vec2i *raster_coords = (Vec2i *)malloc(obj->n_vertices * sizeof(Vec2i));
-  uint32_t *frame_buffer =
-      (uint32_t *)calloc(window.width * window.height, sizeof(uint32_t));
-
-  for (int i = 0; i < obj->n_vertices; i++) {
-    raster_coords[i] =
-        get_pixel_coords(&obj->vertices[i], camera_config, canvas, window);
-  }
-
-  draw_wire(obj, raster_coords, frame_buffer, window);
-  draw_frame(frame_buffer, window);
+  Renderer *renderer = Renderer_Init(&camera, &window);
+  draw_obj(renderer, obj);
 
   char buf;
   for (;;) {
@@ -256,8 +97,7 @@ int main(int argc, char *argv[]) {
   }
 
   OBJ_Deinit(obj);
-  free(raster_coords);
-  free(frame_buffer);
+  Renderer_Deinit(renderer);
 
   return 0;
 }
