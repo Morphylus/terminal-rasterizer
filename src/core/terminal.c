@@ -1,4 +1,5 @@
 #include "terminal.h"
+#include "renderer.h"
 #include <stdio.h>
 #include <sys/ioctl.h>
 
@@ -22,6 +23,8 @@ void resize(int i) {
   ioctl(1, TIOCGWINSZ, &ws);
   window.width = ws.ws_col;
   window.height = ws.ws_row * 2;
+  // window.width = 80;
+  // window.height = 80;
 }
 
 void clean_up() {
@@ -41,7 +44,7 @@ void setup() {
   atexit(clean_up);
 }
 
-void setup_tui(Window *win) {
+void setup_tui() {
   terminit();
   setup();
   resize(0);

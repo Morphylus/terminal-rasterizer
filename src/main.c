@@ -16,17 +16,20 @@ int main(int argc, char *argv[]) {
     return 1;
   }
 
-  setup_tui(&window);
+  setup_tui();
 
   const char *path = argv[1];
   OBJ *obj = OBJ_from_path(path);
 
   Camera camera = {.film_aperture_height = 1.0,
-                   .film_aperture_width = 1.0,
-                   .focal_length = 35.0,
+                   .film_aperture_width =
+                       (float)window.width / (float)window.height,
+                   .angle_of_view = 60.f,
+                   .far_clip_plane = 100.0,
                    .near_clip_plane = 0.1,
-                   .window_width = window.width,
-                   .window_height = window.height};
+                   .position = {2.f, 2.f, 2.f},
+                   .up = {0.f, 1.f, 0.f},
+                   .look_at = {0.f, 0.f, 0.f}};
 
   Renderer *renderer = Renderer_Init(&camera, &window);
   draw_obj(renderer, obj);

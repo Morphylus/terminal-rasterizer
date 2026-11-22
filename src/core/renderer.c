@@ -1,28 +1,26 @@
 #include "renderer.h"
+#include "vec.h"
+#include <math.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 
 Renderer *Renderer_Init(const Camera *camera, const Window *window) {
   Renderer *renderer = (Renderer *)malloc(sizeof(Renderer));
-  Canvas *canvas = (Canvas *)malloc(sizeof(Canvas));
+  Mat4f *world_to_camera = (Mat4f *)calloc(1, sizeof(Mat4f));
+  Mat4f *projection_matrix = (Mat4f *)calloc(1, sizeof(Mat4f));
   uint32_t *frame_buffer =
       (uint32_t *)calloc(window->width * window->height, sizeof(uint32_t));
 
-  float canvas_top =
-      ((camera->film_aperture_height / 2) / camera->focal_length) *
-      camera->near_clip_plane;
-  float canvas_right =
-      canvas_top * (camera->film_aperture_width / camera->film_aperture_height);
-
-  canvas->top = canvas_top;
-  canvas->bottom = -canvas_top;
-  canvas->right = canvas_right;
-  canvas->left = -canvas_right;
+  Mat4f transform;
+  look_at(&transform, camera->position, camera->look_at, camera->up);
+  mat4f_inv(world_to_camera, &transform);
+  set_projection_matrix(projection_matrix, camera);
 
   renderer->camera = camera;
+  renderer->world_to_camera = world_to_camera;
+  renderer->projection_matrix = projection_matrix;
   renderer->frame_buffer = frame_buffer;
-  renderer->canvas = canvas;
   renderer->window = window;
 
   return renderer;
@@ -30,34 +28,76 @@ Renderer *Renderer_Init(const Camera *camera, const Window *window) {
 
 void Renderer_Deinit(Renderer *renderer) {
   if (renderer != NULL) {
-    free(renderer->canvas);
     free(renderer->frame_buffer);
+    free(renderer->world_to_camera);
+    free(renderer->projection_matrix);
     free(renderer);
   }
 }
 
+void set_projection_matrix(Mat4f *mat, const Camera *camera) {
+  float scale = 1.f / tanf((camera->angle_of_view * 0.5) * (M_PI / 180.f));
+  Vec4f *m = (Vec4f *)mat;
+  m[0][0] = scale;
+  m[1][1] = -scale;
+  m[2][2] = -camera->far_clip_plane /
+            (camera->far_clip_plane - camera->near_clip_plane);
+  m[2][3] = -(camera->far_clip_plane * camera->near_clip_plane) /
+            (camera->far_clip_plane - camera->near_clip_plane);
+  m[3][2] = -1.f;
+  m[3][3] = 0.f;
+};
+
+void look_at(Mat4f *mat, const Vec3f from, const Vec3f target, const Vec3f up) {
+  Vec3f forward = normalize(sub(from, target));
+  Vec3f right = normalize(cross(up, forward));
+  Vec3f upwards = cross(forward, right);
+
+  Vec4f *m = (Vec4f *)mat->m;
+  m[0][0] = right.x;
+  m[1][0] = right.y;
+  m[2][0] = right.z;
+  m[3][0] = 0.f;
+  m[0][1] = upwards.x;
+  m[1][1] = upwards.y;
+  m[2][1] = upwards.z;
+  m[3][1] = 0.f;
+  m[0][2] = forward.x;
+  m[1][2] = forward.y;
+  m[2][2] = forward.z;
+  m[3][2] = 0.f;
+  m[0][3] = from.x;
+  m[1][3] = from.y;
+  m[2][3] = from.z;
+  m[3][3] = 1.f;
+}
+
 Vec2i get_pixel_coords(const Vec3f *vertex, const Renderer *renderer) {
-  const Canvas *canvas = renderer->canvas;
   const Window *window = renderer->window;
 
-  Vec3f screen_coords = {
-      .x = renderer->camera->near_clip_plane * vertex->x / -vertex->z,
-      .y = renderer->camera->near_clip_plane * vertex->y / -vertex->z,
-      .z = -vertex->z};
+  Vec4f camera_coords;
+  Vec4f screen_coords;
+  mul_mat_vec4f(&camera_coords, renderer->world_to_camera,
+                &(Vec4f){vertex->x, vertex->y, vertex->z, 1.f});
 
-  Vec3f ndc_coords = {
-      .x = 2 * screen_coords.x / (canvas->right - canvas->left) -
-           (canvas->right + canvas->left) / (canvas->right - canvas->left),
-      .y = 2 * screen_coords.y / (canvas->top - canvas->bottom) -
-           (canvas->top + canvas->bottom) / (canvas->top - canvas->bottom),
-      .z = screen_coords.z};
+  Vec4f *proj = renderer->projection_matrix->m;
+  float w = proj[3][0] * camera_coords[0] + proj[3][1] * camera_coords[1] +
+            proj[3][2] * camera_coords[2] + proj[3][3];
+  mul_mat_vec4f(&screen_coords, renderer->projection_matrix, &camera_coords);
+  screen_coords[0] /= w;
+  screen_coords[1] /= w;
+  screen_coords[2] /= w;
+  screen_coords[3] /= w;
 
-  return (Vec2i){.x = (int)(((1.0 + ndc_coords.x) / 2.0) * window->width),
-                 .y = (int)(((1.0 + ndc_coords.y) / 2.0) * window->height)};
+  Vec2i raster_coords = {
+      .x = (int32_t)((screen_coords[0] + 1.f) * 0.5 * window->width),
+      .y = (int32_t)((screen_coords[1] + 1.f) * 0.5 * window->height)};
+
+  return raster_coords;
 }
 
 void draw_line(const Vec2i *raster_coords, uint32_t *image_buffer, Vec2i p0,
-               Vec2i p1, size_t width) {
+               Vec2i p1, const Window *window) {
   int x0 = p0.x;
   int x1 = p1.x;
   int y0 = p0.y;
@@ -67,7 +107,9 @@ void draw_line(const Vec2i *raster_coords, uint32_t *image_buffer, Vec2i p0,
   int err = dx + dy, e2;
 
   while (1) {
-    image_buffer[x0 + y0 * width] = 0x00ff0000;
+    if (0 <= x0 && x0 < window->width && 0 <= y0 && y0 < window->height) {
+      image_buffer[x0 + y0 * window->width] = 0x00ff0000;
+    }
     if (x0 == x1 && y0 == y1)
       break;
     e2 = 2 * err;
@@ -89,12 +131,9 @@ void draw_wire(const OBJ *obj, const Vec2i *raster_coords, Renderer *renderer) {
     Vec2i v1 = raster_coords[face.y];
     Vec2i v2 = raster_coords[face.z];
 
-    draw_line(raster_coords, renderer->frame_buffer, v0, v1,
-              renderer->window->width);
-    draw_line(raster_coords, renderer->frame_buffer, v0, v2,
-              renderer->window->width);
-    draw_line(raster_coords, renderer->frame_buffer, v1, v2,
-              renderer->window->width);
+    draw_line(raster_coords, renderer->frame_buffer, v0, v1, renderer->window);
+    draw_line(raster_coords, renderer->frame_buffer, v0, v2, renderer->window);
+    draw_line(raster_coords, renderer->frame_buffer, v1, v2, renderer->window);
   }
 }
 

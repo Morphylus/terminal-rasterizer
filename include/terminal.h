@@ -1,7 +1,6 @@
 #pragma once
 
-#include "renderer.h"
 #include <termios.h>
 
-void setup_tui(Window *window);
+void setup_tui();
 void cleanup_tui();
