@@ -27,7 +27,14 @@ void resize(int i) {
   // window.height = 80;
 }
 
-void clean_up() {
+void clean_up(int i) {
+  printf("\x1b[2J");
+  printf("\x1b[?1049l");
+  printf("\x1b[?25h");
+  exit(0);
+}
+
+void clean_up_instant() {
   printf("\x1b[2J");
   printf("\x1b[?1049l");
   printf("\x1b[?25h");
@@ -41,7 +48,7 @@ void setup() {
 
   signal(SIGWINCH, resize);
   signal(SIGINT, clean_up);
-  atexit(clean_up);
+  atexit(clean_up_instant);
 }
 
 void setup_tui() {
@@ -50,4 +57,4 @@ void setup_tui() {
   resize(0);
 }
 
-void cleanup_tui() { clean_up(); }
+void cleanup_tui() { clean_up(0); }

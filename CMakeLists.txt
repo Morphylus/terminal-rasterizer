@@ -14,4 +14,6 @@ add_executable(rasterizer   src/main.c
 
 )
 
+set_property(TARGET rasterizer PROPERTY C_STANDARD 23)
+
 target_include_directories(rasterizer PUBLIC include)

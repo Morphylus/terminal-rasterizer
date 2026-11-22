@@ -46,5 +46,6 @@ typedef struct Renderer {
 Renderer *Renderer_Init(const Camera *camera, const Window *window);
 void Renderer_Deinit(Renderer *renderer);
 void draw_obj(Renderer *renderer, OBJ *obj);
+void clear_frame(Renderer *renderer);
 void set_projection_matrix(Mat4f *mat, const Camera *camera);
 void look_at(Mat4f *mat, const Vec3f from, const Vec3f target, const Vec3f up);

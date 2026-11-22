@@ -4,6 +4,14 @@
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
+
+void world_to_camera(Mat4f *mat, const Camera *camera) {
+  Mat4f transform;
+
+  look_at(&transform, camera->position, camera->look_at, camera->up);
+  mat4f_inv(mat, &transform);
+}
 
 Renderer *Renderer_Init(const Camera *camera, const Window *window) {
   Renderer *renderer = (Renderer *)malloc(sizeof(Renderer));
@@ -11,11 +19,6 @@ Renderer *Renderer_Init(const Camera *camera, const Window *window) {
   Mat4f *projection_matrix = (Mat4f *)calloc(1, sizeof(Mat4f));
   uint32_t *frame_buffer =
       (uint32_t *)calloc(window->width * window->height, sizeof(uint32_t));
-
-  Mat4f transform;
-  look_at(&transform, camera->position, camera->look_at, camera->up);
-  mat4f_inv(world_to_camera, &transform);
-  set_projection_matrix(projection_matrix, camera);
 
   renderer->camera = camera;
   renderer->world_to_camera = world_to_camera;
@@ -165,8 +168,15 @@ void draw_frame(const Renderer *renderer) {
   }
 }
 
+void clear_frame(Renderer *renderer) {
+  memset(renderer->frame_buffer, 0,
+         renderer->window->height * renderer->window->width * sizeof(uint32_t));
+}
+
 void draw_obj(Renderer *renderer, OBJ *obj) {
   Vec2i *raster_coords = (Vec2i *)malloc(obj->n_vertices * sizeof(Vec2i));
+  set_projection_matrix(renderer->projection_matrix, renderer->camera);
+  world_to_camera(renderer->world_to_camera, renderer->camera);
 
   for (int i = 0; i < obj->n_vertices; i++) {
     raster_coords[i] = get_pixel_coords(&obj->vertices[i], renderer);
