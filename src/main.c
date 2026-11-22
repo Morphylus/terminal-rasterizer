@@ -47,34 +47,35 @@ int main(int argc, char *argv[]) {
   char buf;
   long long frame_time_us = (long long)(1000 * 1000 / fps);
   long long last_draw, curr;
-  float angle = 0.f;
-  float zoom = 1.f;
-  float height = 0.f;
+  float radius = 2.f;
+  float theta = M_PI / 2;
+  float phi = 0.f;
+
   for (;;) {
     curr = get_time_us();
 
     if (curr - last_draw >= frame_time_us) {
       if (buf == 'W') {
-        height += 0.1f;
+        theta -= 0.1f;
       }
       if (buf == 'S') {
-        height -= 0.1f;
+        theta += 0.1f;
       }
       if (buf == 'w') {
-        zoom -= 0.1f;
+        radius -= 0.1f;
       }
       if (buf == 's') {
-        zoom += 0.1f;
+        radius += 0.1f;
       }
       if (buf == 'a') {
-        angle += 0.1f;
+        phi -= 0.1f;
       }
       if (buf == 'd') {
-        angle -= 0.1f;
+        phi += 0.1f;
       }
-      camera.position.z = zoom * sin(angle);
-      camera.position.x = zoom * cos(angle);
-      camera.position.y = height;
+      camera.position.z = radius * sinf(theta) * cosf(phi);
+      camera.position.x = radius * sinf(theta) * sinf(phi);
+      camera.position.y = radius * cosf(theta);
 
       clear_frame(renderer);
       draw_obj(renderer, obj);
