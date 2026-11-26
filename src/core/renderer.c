@@ -151,10 +151,25 @@ void draw_at_position(const Color *upper_color, const Color *lower_color,
 void draw_frame(const Renderer *renderer) {
   printf("\x1B[?2026h");
   for (size_t i = 0; i < renderer->window->height - 1; i += 2) {
-    for (size_t j = 0; j < renderer->window->width; j++) {
+    // Place cursor at start of line
+    printf("\x1B[%i;%iH", (int)i / 2, 0);
+    uint32_t prev_rgba_u = renderer->frame_buffer[i * renderer->window->width];
+    uint32_t prev_rgba_l =
+        renderer->frame_buffer[(i + 1) * renderer->window->width];
+    uint8_t r_u = prev_rgba_u >> 24;
+    uint8_t g_u = prev_rgba_u >> 16 & 0xff;
+    uint8_t b_u = prev_rgba_u >> 8 & 0xff;
+    uint8_t r_l = prev_rgba_l >> 24;
+    uint8_t g_l = prev_rgba_l >> 16 & 0xff;
+    uint8_t b_l = prev_rgba_l >> 8 & 0xff;
+    printf("\x1B[48;2;%i;%i;%im", r_l, g_l, b_l);
+    printf("\x1B[38;2;%i;%i;%im", r_u, g_u, b_u);
+    printf("%s", "\u2580");
+    for (size_t j = 1; j < renderer->window->width; j++) {
       uint32_t rgba_u = renderer->frame_buffer[j + i * renderer->window->width];
       uint32_t rgba_l =
           renderer->frame_buffer[j + (i + 1) * renderer->window->width];
+
       uint8_t r_u = rgba_u >> 24;
       uint8_t g_u = rgba_u >> 16 & 0xff;
       uint8_t b_u = rgba_u >> 8 & 0xff;
@@ -162,9 +177,17 @@ void draw_frame(const Renderer *renderer) {
       uint8_t g_l = rgba_l >> 16 & 0xff;
       uint8_t b_l = rgba_l >> 8 & 0xff;
 
-      draw_at_position(&(Color){.r = r_u, .g = g_u, .b = b_u},
-                       &(Color){.r = r_l, .g = g_l, .b = b_l},
-                       &(Vec2i){.x = j, .y = i / 2});
+      // Set color if its different from previews one
+      if (rgba_u != prev_rgba_u || rgba_l != prev_rgba_l) {
+        printf("\x1B[48;2;%i;%i;%im", r_l, g_l, b_l);
+        printf("\x1B[38;2;%i;%i;%im", r_u, g_u, b_u);
+      }
+
+      // Print character in any way
+      printf("%s", "\u2580");
+
+      prev_rgba_u = rgba_u;
+      prev_rgba_l = rgba_l;
     }
   }
   printf("\x1B[?2026l");
