@@ -149,6 +149,7 @@ void draw_at_position(const Color *upper_color, const Color *lower_color,
 }
 
 void draw_frame(const Renderer *renderer) {
+  printf("\x1B[?2026h");
   for (size_t i = 0; i < renderer->window->height - 1; i += 2) {
     for (size_t j = 0; j < renderer->window->width; j++) {
       uint32_t rgba_u = renderer->frame_buffer[j + i * renderer->window->width];
@@ -166,6 +167,7 @@ void draw_frame(const Renderer *renderer) {
                        &(Vec2i){.x = j, .y = i / 2});
     }
   }
+  printf("\x1B[?2026l");
 }
 
 void clear_frame(Renderer *renderer) {
