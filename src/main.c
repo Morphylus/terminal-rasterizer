@@ -131,9 +131,12 @@ int main(int argc, char *argv[]) {
     camera.position.x = radius * sinf(theta) * sinf(phi);
     camera.position.y = radius * cosf(theta);
 
-    usleep(1000);
     clear_frame(renderer);
     draw_obj(renderer, obj);
+
+    long long elapsed = get_time_us() - now;
+    if (elapsed < frame_time_us)
+      usleep((useconds_t)(frame_time_us - elapsed));
   }
 
   OBJ_Deinit(obj);
