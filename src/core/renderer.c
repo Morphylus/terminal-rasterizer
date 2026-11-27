@@ -145,14 +145,6 @@ void draw_wire(const OBJ *obj, const Vec2i *raster_coords, Renderer *renderer) {
   }
 }
 
-void draw_at_position(const Color *upper_color, const Color *lower_color,
-                      const Vec2i *position) {
-  printf("\x1B[%i;%iH", position->y, position->x);
-  printf("\x1B[48;2;%i;%i;%im", lower_color->r, lower_color->g, lower_color->b);
-  printf("\x1B[38;2;%i;%i;%im", upper_color->r, upper_color->g, upper_color->b);
-  printf("%s", "\u2580");
-}
-
 void draw_frame_diff(Renderer *renderer) {
   printf("\x1B[?2026h");
   for (size_t i = 0; i < renderer->window->height - 1; i += 2) {
