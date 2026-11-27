@@ -38,7 +38,9 @@ typedef struct {
 typedef struct Renderer {
   const Camera *camera;
   const Window *window;
-  uint32_t *frame_buffer;
+  uint32_t *main_buffer;
+  uint32_t *alt_buffer;
+  bool is_first_draw;
   Mat4f *world_to_camera;
   Mat4f *projection_matrix;
 } Renderer;
@@ -46,6 +48,5 @@ typedef struct Renderer {
 Renderer *Renderer_Init(const Camera *camera, const Window *window);
 void Renderer_Deinit(Renderer *renderer);
 void draw_obj(Renderer *renderer, OBJ *obj);
-void clear_frame(Renderer *renderer);
 void set_projection_matrix(Mat4f *mat, const Camera *camera);
 void look_at(Mat4f *mat, const Vec3f from, const Vec3f target, const Vec3f up);

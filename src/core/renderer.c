@@ -17,13 +17,17 @@ Renderer *Renderer_Init(const Camera *camera, const Window *window) {
   Renderer *renderer = (Renderer *)malloc(sizeof(Renderer));
   Mat4f *world_to_camera = (Mat4f *)calloc(1, sizeof(Mat4f));
   Mat4f *projection_matrix = (Mat4f *)calloc(1, sizeof(Mat4f));
-  uint32_t *frame_buffer =
+  uint32_t *frame_buffer_a =
+      (uint32_t *)calloc(window->width * window->height, sizeof(uint32_t));
+  uint32_t *frame_buffer_b =
       (uint32_t *)calloc(window->width * window->height, sizeof(uint32_t));
 
   renderer->camera = camera;
+  renderer->is_first_draw = true;
   renderer->world_to_camera = world_to_camera;
   renderer->projection_matrix = projection_matrix;
-  renderer->frame_buffer = frame_buffer;
+  renderer->main_buffer = frame_buffer_a;
+  renderer->alt_buffer = frame_buffer_b;
   renderer->window = window;
 
   return renderer;
@@ -31,7 +35,8 @@ Renderer *Renderer_Init(const Camera *camera, const Window *window) {
 
 void Renderer_Deinit(Renderer *renderer) {
   if (renderer != NULL) {
-    free(renderer->frame_buffer);
+    free(renderer->main_buffer);
+    free(renderer->alt_buffer);
     free(renderer->world_to_camera);
     free(renderer->projection_matrix);
     free(renderer);
@@ -134,9 +139,9 @@ void draw_wire(const OBJ *obj, const Vec2i *raster_coords, Renderer *renderer) {
     Vec2i v1 = raster_coords[face.y];
     Vec2i v2 = raster_coords[face.z];
 
-    draw_line(raster_coords, renderer->frame_buffer, v0, v1, renderer->window);
-    draw_line(raster_coords, renderer->frame_buffer, v0, v2, renderer->window);
-    draw_line(raster_coords, renderer->frame_buffer, v1, v2, renderer->window);
+    draw_line(raster_coords, renderer->main_buffer, v0, v1, renderer->window);
+    draw_line(raster_coords, renderer->main_buffer, v0, v2, renderer->window);
+    draw_line(raster_coords, renderer->main_buffer, v1, v2, renderer->window);
   }
 }
 
@@ -148,28 +153,24 @@ void draw_at_position(const Color *upper_color, const Color *lower_color,
   printf("%s", "\u2580");
 }
 
-void draw_frame(const Renderer *renderer) {
+void draw_frame_diff(Renderer *renderer) {
   printf("\x1B[?2026h");
   for (size_t i = 0; i < renderer->window->height - 1; i += 2) {
-    // Place cursor at start of line
-    printf("\x1B[%i;%iH", (int)i / 2, 0);
-    uint32_t prev_rgba_u = renderer->frame_buffer[i * renderer->window->width];
-    uint32_t prev_rgba_l =
-        renderer->frame_buffer[(i + 1) * renderer->window->width];
-    uint8_t r_u = prev_rgba_u >> 24;
-    uint8_t g_u = prev_rgba_u >> 16 & 0xff;
-    uint8_t b_u = prev_rgba_u >> 8 & 0xff;
-    uint8_t r_l = prev_rgba_l >> 24;
-    uint8_t g_l = prev_rgba_l >> 16 & 0xff;
-    uint8_t b_l = prev_rgba_l >> 8 & 0xff;
-    printf("\x1B[48;2;%i;%i;%im", r_l, g_l, b_l);
-    printf("\x1B[38;2;%i;%i;%im", r_u, g_u, b_u);
-    printf("%s", "\u2580");
-    for (size_t j = 1; j < renderer->window->width; j++) {
-      uint32_t rgba_u = renderer->frame_buffer[j + i * renderer->window->width];
-      uint32_t rgba_l =
-          renderer->frame_buffer[j + (i + 1) * renderer->window->width];
+    for (size_t j = 0; j < renderer->window->width; j++) {
+      size_t index_upper = j + i * renderer->window->width;
+      size_t index_lower = j + (i + 1) * renderer->window->width;
 
+      // Skip drawing if its the same
+      if (renderer->main_buffer[index_upper] ==
+              renderer->alt_buffer[index_upper] &&
+          renderer->main_buffer[index_lower] ==
+              renderer->alt_buffer[index_lower] &&
+          !renderer->is_first_draw) {
+        continue;
+      }
+
+      uint32_t rgba_u = renderer->main_buffer[index_upper];
+      uint32_t rgba_l = renderer->main_buffer[index_lower];
       uint8_t r_u = rgba_u >> 24;
       uint8_t g_u = rgba_u >> 16 & 0xff;
       uint8_t b_u = rgba_u >> 8 & 0xff;
@@ -177,25 +178,21 @@ void draw_frame(const Renderer *renderer) {
       uint8_t g_l = rgba_l >> 16 & 0xff;
       uint8_t b_l = rgba_l >> 8 & 0xff;
 
-      // Set color if its different from previews one
-      if (rgba_u != prev_rgba_u || rgba_l != prev_rgba_l) {
-        printf("\x1B[48;2;%i;%i;%im", r_l, g_l, b_l);
-        printf("\x1B[38;2;%i;%i;%im", r_u, g_u, b_u);
-      }
-
-      // Print character in any way
+      printf("\x1B[%i;%iH", (int)i / 2, (int)j);
+      printf("\x1B[48;2;%i;%i;%im", r_l, g_l, b_l);
+      printf("\x1B[38;2;%i;%i;%im", r_u, g_u, b_u);
       printf("%s", "\u2580");
-
-      prev_rgba_u = rgba_u;
-      prev_rgba_l = rgba_l;
     }
   }
   printf("\x1B[?2026l");
-}
+  uint32_t *tmp_pointer = (uint32_t *)renderer->alt_buffer;
+  renderer->alt_buffer = renderer->main_buffer;
+  renderer->main_buffer = tmp_pointer;
+  renderer->is_first_draw = false;
 
-void clear_frame(Renderer *renderer) {
-  memset(renderer->frame_buffer, 0,
-         renderer->window->height * renderer->window->width * sizeof(uint32_t));
+  // After done drawing buffer we clear the old one immediately
+  memset(renderer->main_buffer, 0,
+         renderer->window->width * renderer->window->height * sizeof(uint32_t));
 }
 
 void draw_obj(Renderer *renderer, OBJ *obj) {
@@ -208,7 +205,7 @@ void draw_obj(Renderer *renderer, OBJ *obj) {
   }
 
   draw_wire(obj, raster_coords, renderer);
-  draw_frame(renderer);
+  draw_frame_diff(renderer);
 
   free(raster_coords);
 }

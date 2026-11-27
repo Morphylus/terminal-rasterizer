@@ -131,7 +131,6 @@ int main(int argc, char *argv[]) {
     camera.position.x = radius * sinf(theta) * sinf(phi);
     camera.position.y = radius * cosf(theta);
 
-    clear_frame(renderer);
     draw_obj(renderer, obj);
 
     long long elapsed = get_time_us() - now;
